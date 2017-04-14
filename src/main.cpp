@@ -2,6 +2,7 @@
 #include <SPI.h>
 #include <Ethernet.h>
 #include <PubSubClient.h>
+#include <ArduinoJson.h>
 #include <avr/pgmspace.h>
 
 const byte mac[] = { 0xDE, 0xAD, 0x00, 0x00, 0x00, 0x00 };
@@ -10,6 +11,8 @@ const char control_topic[] = "control/dead00000000";
 
 EthernetClient client;
 PubSubClient mqtt(client);
+
+bool a0, a1, a2;
 
 void callback(char* topic, byte* payload, unsigned int length) {
   Serial.println(topic);
@@ -28,6 +31,10 @@ void callback(char* topic, byte* payload, unsigned int length) {
   }
 }
 
+bool read(int pin) {
+  return analogRead(pin) > 750;
+}
+
 void setup() {
   Serial.begin(9600);
   Ethernet.begin(mac);
@@ -44,6 +51,48 @@ void setup() {
 
   mqtt.setServer(server, 1883);
   mqtt.setCallback(callback);
+
+  a0 = read(0);
+  a1 = read(1);
+  a2 = read(2);
+}
+
+
+void checkForChanges() {
+  bool na0, na1, na2;
+
+  na0 = read(0);
+  na1 = read(1);
+  na2 = read(2);
+
+  StaticJsonBuffer<128> buffer;
+  JsonObject &root = buffer.createObject();
+  bool report = false;
+
+  if (a0 != na0) {
+    root["a0"] = na0;
+    report = true;
+  }
+
+  if (a1 != na1) {
+    root["a1"] = na1;
+    report = true;
+  }
+
+  if (a2 != na2) {
+    root["a2"] = na2;
+    report = true;
+  }
+
+  if (report) {
+    String str;
+    root.printTo(str);
+    mqtt.publish("device/dead00000000", str.c_str());
+  }
+
+  a0 = na0;
+  a1 = na1;
+  a2 = na2;
 }
 
 void loop() {
@@ -60,4 +109,6 @@ void loop() {
     delay(1000);
   }
   mqtt.loop();
+  checkForChanges();
+  delay(10);
 }
